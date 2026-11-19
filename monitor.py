@@ -203,6 +203,21 @@ def format_opportunity(o):
     return "\n".join(lines)
 
 
+def gmail_diagnosis():
+    """只检查格式，不打印账号密码本身。"""
+    user, pwd = GMAIL_USER, GMAIL_APP_PASSWORD
+    domain = user.rsplit("@", 1)[-1] if "@" in user else "（没有 @）"
+    return "\n".join([
+        "  诊断（不含账号密码内容）：",
+        f"  · GMAIL_USER：{len(user)} 个字符，邮箱后缀是 {domain}"
+        + ("，含有中文/全角字符" if not user.isascii() else "")
+        + ("，中间有空格" if " " in user else ""),
+        f"  · GMAIL_APP_PASSWORD：去掉空格后 {len(pwd)} 位"
+        + ("（正确应为 16 位）" if len(pwd) != 16 else "")
+        + ("，全是小写字母 ✓" if pwd.isascii() and pwd.isalpha() and pwd.islower() else "，不全是小写字母（应用专用密码只含 16 个小写字母）"),
+    ])
+
+
 def send_email(text):
     subject = text.splitlines()[0][:80]
     msg = MIMEText(text, "plain", "utf-8")
@@ -210,6 +225,8 @@ def send_email(text):
     msg["From"] = GMAIL_USER
     msg["To"] = EMAIL_TO
     recipients = [a.strip() for a in EMAIL_TO.split(",") if a.strip()]
+    if not (GMAIL_USER + GMAIL_APP_PASSWORD).isascii():
+        raise RuntimeError("账号或密码里有中文/全角字符。\n" + gmail_diagnosis())
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
         server.ehlo()
         server.user, server.password = GMAIL_USER, GMAIL_APP_PASSWORD
@@ -218,7 +235,8 @@ def send_email(text):
         except smtplib.SMTPAuthenticationError as e:
             raise RuntimeError(
                 "Gmail 拒绝了账号或密码（535）。请检查 GMAIL_USER 是否是完整的 Gmail 地址，"
-                "GMAIL_APP_PASSWORD 是否是 16 位「应用专用密码」（不是 Gmail 登录密码）"
+                "GMAIL_APP_PASSWORD 是否是 16 位「应用专用密码」（不是 Gmail 登录密码）。\n"
+                + gmail_diagnosis()
             ) from e
         server.sendmail(GMAIL_USER, recipients, msg.as_string())
 
