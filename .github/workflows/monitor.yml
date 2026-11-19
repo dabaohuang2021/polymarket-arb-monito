@@ -6,7 +6,7 @@ on:
   workflow_dispatch:          # 允许在网页上手动点击运行
     inputs:
       test_alert:
-        description: "发送一条测试消息（检查飞书/钉钉/Telegram 是否配置成功）"
+        description: "发送一条测试消息（检查邮箱/飞书/钉钉/Telegram 是否配置成功）"
         type: boolean
         default: false
 
@@ -27,6 +27,9 @@ jobs:
 
       - name: 运行套利监控
         env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
