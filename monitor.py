@@ -7,17 +7,19 @@ Polymarket 套利监控机器人（纯只读，不需要钱包/私钥）
    - 二元市场：买 YES + 买 NO 的价格之和 < 阈值
    - 多选一事件（比如「谁会赢得选举」）：把每个选项的 YES 都买一份，价格之和 < 阈值
    因为这些选项最终有且只有一个会赢（赔付 1 美元），总成本低于 1 就是套利空间。
-3. 发现机会就推送到飞书 / 钉钉 / Telegram（在 GitHub Secrets 里配置哪个就推哪个）。
+3. 发现机会就推送到 Gmail 邮箱 / 飞书 / 钉钉 / Telegram（在 GitHub Secrets 里配置哪个就推哪个）。
 
 只用 Python 自带的库，不需要安装任何依赖。
 """
 
 import json
 import os
+import smtplib
 import sys
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from email.mime.text import MIMEText
 
 GAMMA_API = "https://gamma-api.polymarket.com"
 CLOB_API = "https://clob.polymarket.com"
@@ -30,6 +32,9 @@ FEISHU_WEBHOOK = os.getenv("FEISHU_WEBHOOK", "").strip()
 DINGTALK_WEBHOOK = os.getenv("DINGTALK_WEBHOOK", "").strip()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+GMAIL_USER = os.getenv("GMAIL_USER", "").strip()
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
+EMAIL_TO = os.getenv("EMAIL_TO", "").strip() or GMAIL_USER
 TEST_ALERT = os.getenv("TEST_ALERT", "").strip().lower() == "true"
 
 
@@ -198,8 +203,27 @@ def format_opportunity(o):
     return "\n".join(lines)
 
 
+def send_email(text):
+    subject = text.splitlines()[0][:80]
+    msg = MIMEText(text, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = GMAIL_USER
+    msg["To"] = EMAIL_TO
+    recipients = [a.strip() for a in EMAIL_TO.split(",") if a.strip()]
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, recipients, msg.as_string())
+
+
 def send_alert(text):
     sent = False
+    if GMAIL_USER and GMAIL_APP_PASSWORD:
+        try:
+            send_email(text)
+            print(f"邮件已发送到：{EMAIL_TO}")
+            sent = True
+        except Exception as e:
+            print(f"Gmail 发送失败：{e}")
     chunks = [text[i : i + 3500] for i in range(0, len(text), 3500)] or [text]
     for chunk in chunks:
         if FEISHU_WEBHOOK:
@@ -228,7 +252,7 @@ def send_alert(text):
             except Exception as e:
                 print(f"Telegram 发送失败：{e}")
     if not sent:
-        print("⚠️ 没有配置任何提醒通道（FEISHU_WEBHOOK / DINGTALK_WEBHOOK / TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID）")
+        print("⚠️ 没有配置任何提醒通道（GMAIL_USER+GMAIL_APP_PASSWORD / FEISHU_WEBHOOK / DINGTALK_WEBHOOK / TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID）")
     return sent
 
 
