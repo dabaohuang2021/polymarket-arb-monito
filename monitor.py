@@ -211,12 +211,26 @@ def send_email(text):
     msg["To"] = EMAIL_TO
     recipients = [a.strip() for a in EMAIL_TO.split(",") if a.strip()]
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.ehlo()
+        server.user, server.password = GMAIL_USER, GMAIL_APP_PASSWORD
+        try:
+            server.auth("PLAIN", server.auth_plain)
+        except smtplib.SMTPAuthenticationError as e:
+            raise RuntimeError(
+                "Gmail 拒绝了账号或密码（535）。请检查 GMAIL_USER 是否是完整的 Gmail 地址，"
+                "GMAIL_APP_PASSWORD 是否是 16 位「应用专用密码」（不是 Gmail 登录密码）"
+            ) from e
         server.sendmail(GMAIL_USER, recipients, msg.as_string())
 
 
 def send_alert(text):
     sent = False
+    configured = bool(
+        (GMAIL_USER and GMAIL_APP_PASSWORD)
+        or FEISHU_WEBHOOK
+        or DINGTALK_WEBHOOK
+        or (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+    )
     if GMAIL_USER and GMAIL_APP_PASSWORD:
         try:
             send_email(text)
@@ -251,8 +265,10 @@ def send_alert(text):
                 sent = True
             except Exception as e:
                 print(f"Telegram 发送失败：{e}")
-    if not sent:
+    if not configured:
         print("⚠️ 没有配置任何提醒通道（GMAIL_USER+GMAIL_APP_PASSWORD / FEISHU_WEBHOOK / DINGTALK_WEBHOOK / TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID）")
+    elif not sent:
+        print("⚠️ 所有提醒通道都发送失败，请看上面的报错")
     return sent
 
 
