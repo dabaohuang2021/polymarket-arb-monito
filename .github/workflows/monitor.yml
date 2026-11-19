@@ -1,0 +1,53 @@
+name: Polymarket 套利监控
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 每 10 分钟运行一次（GitHub 高峰期可能延迟几分钟）
+  workflow_dispatch:          # 允许在网页上手动点击运行
+    inputs:
+      test_alert:
+        description: "发送一条测试消息（检查飞书/钉钉/Telegram 是否配置成功）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # 仅用于下面的「保活」步骤，脚本本身是纯只读的
+
+concurrency:
+  group: polymarket-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 下载代码
+        uses: actions/checkout@v4
+
+      - name: 运行套利监控
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOP_N: ${{ vars.TOP_N }}
+          THRESHOLD: ${{ vars.THRESHOLD }}
+          TEST_ALERT: ${{ inputs.test_alert }}
+        run: python3 monitor.py
+
+      # GitHub 会自动停用「60 天没有任何提交」的仓库里的定时任务。
+      # 这一步在最近一次提交超过 50 天时，自动提交一个空提交来保持运行。
+      - name: 保活（防止 60 天后被 GitHub 自动停用）
+        if: github.event_name == 'schedule'
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          if [ $(( (now - last) / 86400 )) -ge 50 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive: 保持定时任务运行"
+            git push
+          else
+            echo "最近有提交，无需保活"
+          fi
